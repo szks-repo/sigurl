@@ -42,10 +42,11 @@ const (
 type encoding string
 
 type SigUrl struct {
-	ParamKeyPrefix string
-	encoding       encoding
-	privateKey     []byte
-	publicKey      []byte
+	ParamKeyPrefix  string
+	encoding        encoding
+	privateKey      []byte
+	publicKey       []byte
+	verifyFuncStack []func() bool
 }
 
 func New(prefix string, encoding encoding, privateKey, publicKey []byte) *SigUrl {
@@ -61,6 +62,11 @@ func New(prefix string, encoding encoding, privateKey, publicKey []byte) *SigUrl
 	}
 }
 
+//RegisterAdditionalVerifyFunc unimplemented
+func (s *SigUrl) RegisterAdditionalVerifyFunc(fn func() bool) {
+	s.verifyFuncStack = append(s.verifyFuncStack, fn)
+}
+
 type SignedInfo struct {
 	//署名付きURLが使用可能になる日付と時刻
 	Date time.Time
@@ -71,8 +77,6 @@ type SignedInfo struct {
 	Signature string
 	//署名対象メッセージ（正規化する）
 	Message string
-	//その他
-	//X-Goog-SignedHeaders: 署名付きURLを使用するリクエストの一部として含める必要があるヘッダー。
 }
 
 func (s *SigUrl) Sign(baseUrl string, date time.Time, expires uint32) (string, error) {

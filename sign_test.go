@@ -13,6 +13,8 @@ func Test_Do(t *testing.T) {
 	t.Run("ok", func(t *testing.T) {
 		privateKey, publicKey := testutil.GenerateRSAKeyPairAsPem()
 		sigUrlInstance := New("", EncodingBase64, privateKey.Bytes, publicKey.Bytes)
+		sigUrlInstance.RegisterAdditionalVerifyFunc(nil)
+
 		signedUrl, err := sigUrlInstance.Sign("https://www.example.com/blog/001?param1=a", time.Now(), 7200)
 		fmt.Println(signedUrl)
 		if err != nil {
