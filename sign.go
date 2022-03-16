@@ -11,6 +11,7 @@ import (
 	"fmt"
 	"net/url"
 	"strconv"
+	"strings"
 	"time"
 )
 
@@ -115,25 +116,6 @@ func (s *SigUrl) checkURLCanSign(parsed url.URL) bool {
 }
 
 func (s *SigUrl) sign(message string, privateKeyBytes []byte) (ret string, err error) {
-	/*
-		// ASN.1 PKCS＃1 DERエンコード形式からRSA秘密鍵を返す
-		private, err := x509.ParsePKCS1PrivateKey(keyBytes)
-		if err != nil {
-			return "", err
-		}
-
-		// SHA-256のハッシュ関数を使って送信データのハッシュ値を算出する
-		h := sha256.Sum256([]byte(message))
-		signedData, err := rsa.SignPKCS1v15(rand.Reader, private, crypto.SHA256, h[:])
-		if err != nil {
-			return "", err
-		}
-
-		// 暗号化したバイト列のデータをBase64でエンコーディングし、署名文字列を生成
-		//signature := base64.StdEncoding.EncodeToString(signedData)
-		signature := fmt.Sprintf("%x", signedData)
-		return signature, nil
-	*/
 	private, err := x509.ParsePKCS1PrivateKey(privateKeyBytes)
 	if err != nil {
 		return "", err
@@ -187,10 +169,17 @@ func (si *SignedInfo) verify(message string, pubKeyBytes []byte) error {
 }
 
 func (si *SignedInfo) verifySignature(message string, pubKeyBytes []byte, signature string) error {
-	fmt.Println("message =>", message)
-	pubKey, err := x509.ParsePKCS1PublicKey(pubKeyBytes)
-	if err != nil {
-		return err
+	var pubKey *rsa.PublicKey
+	maybePubKey, err := x509.ParsePKIXPublicKey(pubKeyBytes)
+	if err == nil {
+		var ok bool
+		if pubKey, ok = maybePubKey.(*rsa.PublicKey); !ok {
+			return fmt.Errorf("unsupported public key: %T", maybePubKey)
+		}
+	} else if err != nil && strings.Contains(err.Error(), "instead") {
+		if pubKey, err = x509.ParsePKCS1PublicKey(pubKeyBytes); err != nil {
+			return err
+		}
 	}
 
 	//TODO: switch SigUrl.encoding
