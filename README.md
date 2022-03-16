@@ -16,7 +16,7 @@ var sigUrlInstance *sigurl.SigUrl
 
 func main() {
 
-	sigUrlInstance := sigurl.New("", sigurl.EncodingHex, "YOUR_PRIVATE_KEY", "YOUR_PURLIC_KEY")
+	sigUrlInstance = sigurl.New("", sigurl.EncodingHex, "YOUR_PRIVATE_KEY", "YOUR_PURLIC_KEY")
 	
 	signedUrl, err := sigUrlInstance.Sign("https://www.example.com/page/1?paramA=value&paramB=value", time.Now(), 7200)
 	if err != nil {
