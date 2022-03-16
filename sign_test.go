@@ -1,6 +1,7 @@
 package sigurl
 
 import (
+	"errors"
 	"fmt"
 	"github.com/szks-repo/sigurl/test/testutil"
 	"testing"
@@ -23,6 +24,19 @@ func Test_Do(t *testing.T) {
 		}
 	})
 
+	t.Run("future date", func(t *testing.T) {
+		privateKey, publicKey := testutil.GenerateRSAKeyPairAsPem()
+		sigUrlInstance := New("", EncodingBase64, privateKey.Bytes, publicKey.Bytes)
+		signedUrl, err := sigUrlInstance.Sign("https://www.example.com/blog/001?param1=a", time.Now().Add(time.Minute*1), 7200)
+		if err != nil {
+			t.Error(err)
+		}
+
+		if err := sigUrlInstance.Verify(signedUrl); !errors.Is(err, ErrBeforeStartDate) {
+			t.Error("unexpected result")
+		}
+	})
+
 	t.Run("expires", func(t *testing.T) {
 		privateKey, publicKey := testutil.GenerateRSAKeyPairAsPem()
 		sigUrlInstance := New("", EncodingBase64, privateKey.Bytes, publicKey.Bytes)
@@ -33,7 +47,7 @@ func Test_Do(t *testing.T) {
 
 		time.Sleep(time.Second * 2)
 
-		if err := sigUrlInstance.Verify(signedUrl); err == nil {
+		if err := sigUrlInstance.Verify(signedUrl); !errors.Is(err, ErrURLExpired) {
 			t.Error("unexpected result")
 		}
 	})
