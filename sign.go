@@ -14,22 +14,6 @@ import (
 	"time"
 )
 
-/*
-https://storage.googleapis.com/example-bucket/cat.jpeg
-?X-Goog-Algorithm=GOOG4-RSA-SHA256
-&X-Goog-Credential=example%40example-project.iam.gserviceaccount.com%2F20181026%2Fus-central1%2Fstorage%2Fgoog4_request
-&X-Goog-Date=20181026T181309Z
-&X-Goog-Expires=900
-&X-Goog-SignedHeaders=host
-&X-Goog-Signature=247a2aa45f169edf4d187d54e7cc46e4731b1e6273242c4f4c39a1d2507a0e58706e25e3a85a7dbb891d62afa849
-6def8e260c1db863d9ace85ff0a184b894b117fe46d1225c82f2aa19efd52cf21d3e2022b3b868dc
-c1aca2741951ed5bf3bb25a34f5e9316a2841e8ff4c530b22ceaa1c5ce09c7cbb5732631510c2058
-0e61723f5594de3aea497f195456a2ff2bdd0d13bad47289d8611b6f9cfeef0c46c91a455b94e90a
-66924f722292d21e24d31dcfb38ce0c0f353ffa5a9756fc2a9f2b40bc2113206a81e324fc4fd6823
-a29163fa845c8ae7eca1fcf6e5bb48b3200983c56c5ca81fffb151cca7402beddfc4a76b13344703
-2ea7abedc098d2eb14a7
-*/
-
 var (
 	ErrMissingURLParameter = errors.New("some parameters are missing")
 	ErrIllegalURLParameter = errors.New("illegal parameter found")
@@ -59,11 +43,11 @@ type encoding string
 type SigUrl struct {
 	ParamKeyPrefix string
 	encoding       encoding
-	privateKey     string
-	publicKey      string
+	privateKey     []byte
+	publicKey      []byte
 }
 
-func New(prefix string, encoding encoding, privateKey, publicKey string) *SigUrl {
+func New(prefix string, encoding encoding, privateKey, publicKey []byte) *SigUrl {
 	if prefix == "" {
 		prefix = "X-Sig"
 	}
@@ -91,7 +75,7 @@ type SignedInfo struct {
 }
 
 func (s *SigUrl) Sign(baseUrl string, date time.Time, expires uint32) (string, error) {
-	if s.privateKey == "" {
+	if s.privateKey == nil {
 		return "", ErrPrivateKeyNotSet
 	}
 	netURL, err := url.Parse(baseUrl)
@@ -104,6 +88,7 @@ func (s *SigUrl) Sign(baseUrl string, date time.Time, expires uint32) (string, e
 	query.Set(s.paramKey(paramKeyDate), date.Format(ISO8601))
 	query.Set(s.paramKey(paramKeyExpires), fmt.Sprintf("%d", expires))
 	message := s.buildURL(netURL, query)
+
 	signature, err := s.sign(message, s.privateKey)
 	if err != nil {
 		return "", err
@@ -111,20 +96,6 @@ func (s *SigUrl) Sign(baseUrl string, date time.Time, expires uint32) (string, e
 
 	query.Set(s.paramKey(paramKeySignature), signature)
 	return s.buildURL(netURL, query), nil
-}
-
-func (s *SigUrl) Verify(rawUrl string) error {
-	parsed, err := url.Parse(rawUrl)
-	if err != nil {
-		return err
-	}
-
-	signedInfo, err := s.SignedInfoFromUrl(parsed)
-	if err != nil {
-		return err
-	}
-
-	return signedInfo.verify(rawUrl, s.publicKey)
 }
 
 func (s *SigUrl) checkURLCanSign(parsed url.URL) bool {
@@ -143,22 +114,33 @@ func (s *SigUrl) checkURLCanSign(parsed url.URL) bool {
 	return true
 }
 
-func (s *SigUrl) sign(message string, privateKeyStr string) (ret string, err error) {
-	keyBytes, err := base64.StdEncoding.DecodeString(privateKeyStr)
-	if err != nil {
-		return "", nil
-	}
+func (s *SigUrl) sign(message string, privateKeyBytes []byte) (ret string, err error) {
+	/*
+		// ASN.1 PKCS＃1 DERエンコード形式からRSA秘密鍵を返す
+		private, err := x509.ParsePKCS1PrivateKey(keyBytes)
+		if err != nil {
+			return "", err
+		}
 
-	private, err := x509.ParsePKCS1PrivateKey(keyBytes)
+		// SHA-256のハッシュ関数を使って送信データのハッシュ値を算出する
+		h := sha256.Sum256([]byte(message))
+		signedData, err := rsa.SignPKCS1v15(rand.Reader, private, crypto.SHA256, h[:])
+		if err != nil {
+			return "", err
+		}
+
+		// 暗号化したバイト列のデータをBase64でエンコーディングし、署名文字列を生成
+		//signature := base64.StdEncoding.EncodeToString(signedData)
+		signature := fmt.Sprintf("%x", signedData)
+		return signature, nil
+	*/
+	private, err := x509.ParsePKCS1PrivateKey(privateKeyBytes)
 	if err != nil {
 		return "", err
 	}
 
-	hash := sha256.New()
-	hash.Write(([]byte)(message))
-	digest := hash.Sum(nil)
-
-	signatureBytes, err := rsa.SignPKCS1v15(rand.Reader, private, crypto.SHA256, digest)
+	h := sha256.Sum256([]byte(message))
+	signatureBytes, err := rsa.SignPKCS1v15(rand.Reader, private, crypto.SHA256, h[:])
 	if err != nil {
 		return "", err
 	}
@@ -174,7 +156,21 @@ func (s *SigUrl) sign(message string, privateKeyStr string) (ret string, err err
 	return
 }
 
-func (si *SignedInfo) verify(message string, pubKeyStr string) error {
+func (s *SigUrl) Verify(rawUrl string) error {
+	parsed, err := url.Parse(rawUrl)
+	if err != nil {
+		return err
+	}
+
+	signedInfo, err := s.SignedInfoFromUrl(parsed)
+	if err != nil {
+		return err
+	}
+
+	return signedInfo.verify(signedInfo.Message, s.publicKey)
+}
+
+func (si *SignedInfo) verify(message string, pubKeyBytes []byte) error {
 	if nowFunc().Before(si.Date) {
 		//使用開始時刻になっていない
 		return ErrBeforeStartDate
@@ -187,30 +183,25 @@ func (si *SignedInfo) verify(message string, pubKeyStr string) error {
 	}
 
 	//署名を検証
-	return si.verifySignature(message, pubKeyStr, si.Signature)
+	return si.verifySignature(message, pubKeyBytes, si.Signature)
 }
 
-func (si *SignedInfo) verifySignature(message string, pubKeyStr string, signature string) error {
-	pubKeyBytes, err := base64.StdEncoding.DecodeString(pubKeyStr)
+func (si *SignedInfo) verifySignature(message string, pubKeyBytes []byte, signature string) error {
+	fmt.Println("message =>", message)
+	pubKey, err := x509.ParsePKCS1PublicKey(pubKeyBytes)
 	if err != nil {
 		return err
 	}
 
-	pubKey, err := x509.ParsePKIXPublicKey(pubKeyBytes)
-	if err != nil {
-		return err
-	}
-
+	//TODO: switch SigUrl.encoding
 	signatureBytes, err := base64.StdEncoding.DecodeString(signature)
+	//signatureBytes, err := hex.DecodeString(signature)
 	if err != nil {
 		return err
 	}
 
-	hash := crypto.Hash.New(crypto.SHA256)
-	hash.Write([]byte(message))
-	digest := hash.Sum(nil)
-
-	return rsa.VerifyPKCS1v15(pubKey.(*rsa.PublicKey), crypto.SHA256, digest, signatureBytes)
+	h := sha256.Sum256([]byte(message))
+	return rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, h[:], signatureBytes)
 }
 
 func (s *SigUrl) SignedInfoFromUrl(parsedUrl *url.URL) (*SignedInfo, error) {
@@ -219,7 +210,7 @@ func (s *SigUrl) SignedInfoFromUrl(parsedUrl *url.URL) (*SignedInfo, error) {
 	if algo == "" {
 		return nil, ErrMissingURLParameter
 	} else if algo != SignAlgoRSASHA256 {
-		return nil, ErrIllegalURLParameter
+		return nil, fmt.Errorf("%v: algo %q", ErrIllegalURLParameter, algo)
 	}
 
 	signature := query.Get(s.paramKey(paramKeySignature))
@@ -233,16 +224,17 @@ func (s *SigUrl) SignedInfoFromUrl(parsedUrl *url.URL) (*SignedInfo, error) {
 	}
 	expires, _ := strconv.Atoi(expiresStr)
 	if expires <= 0 {
-		return nil, ErrIllegalURLParameter
+		return nil, fmt.Errorf("%v: expires %d", ErrIllegalURLParameter, expires)
 	}
 
 	dateStr := query.Get(s.paramKey(paramKeyDate))
 	if dateStr == "" {
 		return nil, ErrMissingURLParameter
 	}
-	date, err := time.Parse(dateStr, ISO8601)
+
+	date, err := time.ParseInLocation(ISO8601, dateStr, time.Local)
 	if err != nil {
-		return nil, ErrIllegalURLParameter
+		return nil, fmt.Errorf("%v: date %w", ErrIllegalURLParameter, err)
 	}
 
 	//Normalize URL

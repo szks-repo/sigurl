@@ -1,6 +1,6 @@
 # sigurl
 
-generate signed url and verify signed url
+Generate signed url and verify signed url.
 
 ```go
 package main
@@ -26,7 +26,7 @@ func main() {
 	/*
 	Output:
 	https://www.example.com/page/1?paramA=value&paramB=value
-	&X-Sig-Algorithm=RSA-SHA256&X-Sig-Date=20210101T123012Z&X-Sig-Expires=7200&X-Sig-Encoding=Hex&X-Sig-Signature=3c79d7b7bc035324e4452c085424c2d6f16562cf31g3a...
+	&X-Sig-Algorithm=RSA-SHA256&X-Sig-Date=20210101T123012Z&X-Sig-Expires=7200&X-Sig-Signature=3c79d7b7bc035324e4452c085424c2d6f16562cf31g3a...
 	*/
 	
 	if err := sigUrlInstance.Verify(signedUrl); err != nil {
