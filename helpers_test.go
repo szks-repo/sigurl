@@ -7,7 +7,19 @@ import (
 )
 
 func Test_cloneQuery(t *testing.T) {
-	t.Run("case1", func(t *testing.T) {
+	t.Run("shallow copy", func(t *testing.T) {
+		original := url.Values{}
+		original.Set("key", "value")
+
+		ptrCp := original
+		ptrCp.Add("Key2", "Value2")
+
+		if !reflect.DeepEqual(original, ptrCp) {
+			t.Error("unexpected result")
+		}
+	})
+
+	t.Run("deep copy", func(t *testing.T) {
 		original := url.Values{}
 		original.Set("key1", "value1")
 		original.Set("key2", "value2")
