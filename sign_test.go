@@ -2,33 +2,47 @@ package sigurl
 
 import (
 	"errors"
-	"fmt"
 	"github.com/szks-repo/sigurl/test/testutil"
 	"testing"
 	"time"
 )
 
-func Test_Do(t *testing.T) {
+func TestSuccess(t *testing.T) {
+	for _, v := range []string{
+		"https://www.example.com",
+		"https://www.example.com/blog/001?param1=a",
+		"https://www.example.com/blog/001?param1=a&param2=b",
+		"https://www.example.com/#Id1",
+		"https://www.example.com/blog/001?param1=a&param2=b#Id1",
+		"/path/to/resource",
+	} {
+		t.Run("ok", func(t *testing.T) {
+			privateKey, publicKey := testutil.GenerateRSAKeyPairAsPem()
+			sigUrlInstance := New(privateKey.Bytes, publicKey.Bytes, &Config{
+				Encoding:     EncodingBase64,
+				CustomPolicy: NewCustomPolicy(),
+			})
+			sigUrlInstance.RegisterAdditionalVerifyFunc(nil)
 
-	t.Run("ok", func(t *testing.T) {
-		privateKey, publicKey := testutil.GenerateRSAKeyPairAsPem()
-		sigUrlInstance := New("", EncodingBase64, privateKey.Bytes, publicKey.Bytes)
-		sigUrlInstance.RegisterAdditionalVerifyFunc(nil)
+			signedUrl, err := sigUrlInstance.Sign(v, time.Now(), 7200)
+			if err != nil {
+				t.Error(err)
+			}
 
-		signedUrl, err := sigUrlInstance.Sign("https://www.example.com/blog/001?param1=a", time.Now(), 7200)
-		fmt.Println(signedUrl)
-		if err != nil {
-			t.Error(err)
-		}
+			if err := sigUrlInstance.Verify(signedUrl); err != nil {
+				t.Error(err)
+			}
+		})
+	}
+}
 
-		if err := sigUrlInstance.Verify(signedUrl); err != nil {
-			t.Error(err)
-		}
-	})
-
+func TestFail(t *testing.T) {
 	t.Run("future date", func(t *testing.T) {
 		privateKey, publicKey := testutil.GenerateRSAKeyPairAsPem()
-		sigUrlInstance := New("", EncodingBase64, privateKey.Bytes, publicKey.Bytes)
+		sigUrlInstance := New(privateKey.Bytes, publicKey.Bytes, &Config{
+			Encoding:     EncodingBase64,
+			CustomPolicy: NewCustomPolicy(),
+		})
 		signedUrl, err := sigUrlInstance.Sign("https://www.example.com/blog/001?param1=a", time.Now().Add(time.Minute*1), 7200)
 		if err != nil {
 			t.Error(err)
@@ -41,7 +55,10 @@ func Test_Do(t *testing.T) {
 
 	t.Run("expires", func(t *testing.T) {
 		privateKey, publicKey := testutil.GenerateRSAKeyPairAsPem()
-		sigUrlInstance := New("", EncodingBase64, privateKey.Bytes, publicKey.Bytes)
+		sigUrlInstance := New(privateKey.Bytes, publicKey.Bytes, &Config{
+			Encoding:     EncodingBase64,
+			CustomPolicy: NewCustomPolicy(),
+		})
 		signedUrl, err := sigUrlInstance.Sign("https://www.example.com/blog/001?param1=a", time.Now(), 1)
 		if err != nil {
 			t.Error(err)

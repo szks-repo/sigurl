@@ -7,6 +7,7 @@ import (
 	"crypto/sha256"
 	"crypto/x509"
 	"encoding/base64"
+	"encoding/hex"
 	"errors"
 	"fmt"
 	"net/url"
@@ -29,10 +30,11 @@ var nowFunc = time.Now
 const (
 	ISO8601 = "20060102T150405Z"
 
-	paramKeyAlgo      = "Algorithm"
-	paramKeyDate      = "Date"
-	paramKeyExpires   = "Expires"
-	paramKeySignature = "Signature"
+	paramKeyAlgo         = "Algorithm"
+	paramKeyDate         = "Date"
+	paramKeyExpires      = "Expires"
+	paramKeySignature    = "Signature"
+	paramKeyCustomPolicy = "CustomPolicy"
 
 	SignAlgoRSASHA256 = "RSA-SHA256"
 
@@ -43,23 +45,49 @@ const (
 type encoding string
 
 type SigUrl struct {
-	ParamKeyPrefix  string
-	encoding        encoding
 	privateKey      []byte
 	publicKey       []byte
 	verifyFuncStack []func() bool
+	config          *Config
 }
 
-func New(prefix string, encoding encoding, privateKey, publicKey []byte) *SigUrl {
-	if prefix == "" {
-		prefix = "X-Sig"
+type Config struct {
+	Prefix       string
+	Encoding     encoding
+	Location     *time.Location
+	CustomPolicy *CustomPolicy
+}
+
+func defaultConfig() *Config {
+	return &Config{
+		Prefix:       "X-Sig",
+		Encoding:     EncodingHex,
+		Location:     time.Local,
+		CustomPolicy: NewCustomPolicy(),
+	}
+}
+
+func New(privateKey, publicKey []byte, cfg *Config) *SigUrl {
+	if cfg == nil {
+		cfg = defaultConfig()
+	}
+	if cfg.Prefix == "" {
+		cfg.Prefix = "X-Sig"
+	}
+	if cfg.Encoding == "" {
+		cfg.Encoding = EncodingHex
+	}
+	if cfg.Location == nil {
+		cfg.Location = time.Local
+	}
+	if cfg.CustomPolicy == nil {
+		cfg.CustomPolicy = NewCustomPolicy()
 	}
 
 	return &SigUrl{
-		ParamKeyPrefix: prefix,
-		encoding:       encoding,
-		privateKey:     privateKey,
-		publicKey:      publicKey,
+		privateKey: privateKey,
+		publicKey:  publicKey,
+		config:     cfg,
 	}
 }
 
@@ -78,6 +106,8 @@ type SignedInfo struct {
 	Signature string
 	//署名対象メッセージ（正規化する）
 	Message string
+	//ポリシー
+	CustomPolicy string
 }
 
 func (s *SigUrl) Sign(baseUrl string, date time.Time, expires uint32) (string, error) {
@@ -139,7 +169,7 @@ func (s *SigUrl) sign(message string, privateKeyBytes []byte) (ret string, err e
 		return "", err
 	}
 
-	switch s.encoding {
+	switch s.config.Encoding {
 	case EncodingBase64:
 		ret = base64.StdEncoding.EncodeToString(signatureBytes)
 		break
@@ -161,47 +191,36 @@ func (s *SigUrl) Verify(rawUrl string) error {
 		return err
 	}
 
-	return signedInfo.verify(signedInfo.Message, s.publicKey)
-}
-
-func (si *SignedInfo) verify(message string, pubKeyBytes []byte) error {
-	if nowFunc().Before(si.Date) {
+	if nowFunc().Before(signedInfo.Date) {
 		//使用開始時刻になっていない
 		return ErrBeforeStartDate
 	}
 
-	expiresAt := si.Date.Add(time.Second * time.Duration(si.Expires))
+	expiresAt := signedInfo.Date.Add(time.Second * time.Duration(signedInfo.Expires))
 	if expiresAt.Before(nowFunc()) {
 		//有効期限切
 		return ErrURLExpired
 	}
 
-	//署名を検証
-	return si.verifySignature(message, pubKeyBytes, si.Signature)
-}
-
-func (si *SignedInfo) verifySignature(message string, pubKeyBytes []byte, signature string) error {
 	var pubKey *rsa.PublicKey
-	maybePubKey, err := x509.ParsePKIXPublicKey(pubKeyBytes)
+	maybePubKey, err := x509.ParsePKIXPublicKey(s.publicKey)
 	if err == nil {
 		var ok bool
 		if pubKey, ok = maybePubKey.(*rsa.PublicKey); !ok {
 			return fmt.Errorf("unsupported public key: %T", maybePubKey)
 		}
 	} else if err != nil && strings.Contains(err.Error(), "instead") {
-		if pubKey, err = x509.ParsePKCS1PublicKey(pubKeyBytes); err != nil {
+		if pubKey, err = x509.ParsePKCS1PublicKey(s.publicKey); err != nil {
 			return err
 		}
 	}
 
-	//TODO: switch SigUrl.encoding
-	signatureBytes, err := base64.StdEncoding.DecodeString(signature)
-	//signatureBytes, err := hex.DecodeString(signature)
+	signatureBytes, err := signedInfo.SignatureBytes(s.config.Encoding)
 	if err != nil {
 		return err
 	}
 
-	h := sha256.Sum256([]byte(message))
+	h := sha256.Sum256([]byte(signedInfo.Message))
 	return rsa.VerifyPKCS1v15(pubKey, crypto.SHA256, h[:], signatureBytes)
 }
 
@@ -233,7 +252,7 @@ func (s *SigUrl) SignedInfoFromUrl(parsedUrl *url.URL) (*SignedInfo, error) {
 		return nil, ErrMissingURLParameter
 	}
 
-	date, err := time.ParseInLocation(ISO8601, dateStr, time.Local)
+	date, err := time.ParseInLocation(ISO8601, dateStr, s.config.Location)
 	if err != nil {
 		return nil, fmt.Errorf("%v: date %w", ErrIllegalURLParameter, err)
 	}
@@ -262,7 +281,7 @@ func (s *SigUrl) cloneQuery(q1 url.Values) url.Values {
 }
 
 func (s *SigUrl) paramKey(k string) string {
-	return s.ParamKeyPrefix + "-" + k
+	return s.config.Prefix + "-" + k
 }
 
 func (s *SigUrl) buildURL(netURL *url.URL, params url.Values) (ret string) {
@@ -284,4 +303,14 @@ func (s *SigUrl) buildURL(netURL *url.URL, params url.Values) (ret string) {
 	}
 
 	return
+}
+
+func (si *SignedInfo) SignatureBytes(e encoding) ([]byte, error) {
+	switch e {
+	case EncodingHex:
+		return hex.DecodeString(si.Signature)
+	case EncodingBase64:
+		return base64.StdEncoding.DecodeString(si.Signature)
+	}
+	return nil, errors.New("unreachable error")
 }
