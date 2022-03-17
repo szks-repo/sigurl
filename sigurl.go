@@ -125,7 +125,7 @@ func (s *SigUrl) Sign(baseUrl string, date time.Time, expires uint32) (string, e
 	query.Set(s.paramKey(paramKeyAlgo), SignAlgoRSASHA256)
 	query.Set(s.paramKey(paramKeyDate), date.Format(ISO8601))
 	query.Set(s.paramKey(paramKeyExpires), fmt.Sprintf("%d", expires))
-	message := s.buildURL(netUrl, query)
+	message := s.buildUrl(netUrl, query)
 
 	signature, err := s.sign(message, s.privateKey)
 	if err != nil {
@@ -133,7 +133,7 @@ func (s *SigUrl) Sign(baseUrl string, date time.Time, expires uint32) (string, e
 	}
 
 	query.Set(s.paramKey(paramKeySignature), signature)
-	return s.buildURL(netUrl, query), nil
+	return s.buildUrl(netUrl, query), nil
 }
 
 func (s *SigUrl) checkUrlCanSign(netUrl *url.URL) bool {
@@ -259,7 +259,7 @@ func (s *SigUrl) SignedInfoFromUrl(parsedUrl *url.URL) (*SignedInfo, error) {
 	//Normalize URL
 	query2 := s.cloneQuery(query)
 	query2.Del(s.paramKey(paramKeySignature))
-	normalizedUrl := s.buildURL(parsedUrl, query2)
+	normalizedUrl := s.buildUrl(parsedUrl, query2)
 
 	return &SignedInfo{
 		Expires:   expires,
@@ -283,7 +283,7 @@ func (s *SigUrl) paramKey(k string) string {
 	return s.config.Prefix + "-" + k
 }
 
-func (s *SigUrl) buildURL(netURL *url.URL, params url.Values) (ret string) {
+func (s *SigUrl) buildUrl(netURL *url.URL, params url.Values) (ret string) {
 	if netURL == nil {
 		return
 	}
