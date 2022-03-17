@@ -18,7 +18,10 @@ func main() {
 
 	sigUrlInstance = sigurl.New("", sigurl.EncodingHex, []byte("YOUR_PRIVATE_KEY"), []byte("YOUR_PURLIC_KEY"))
 	
-	signedUrl, err := sigUrlInstance.Sign("https://www.example.com/page/1?paramA=value&paramB=value", time.Now(), 7200)
+	signedUrl, err := sigUrlInstance.Sign(
+		"https://www.example.com/page/1?paramA=value&paramB=value",
+		time.Now(),
+		7200)
 	if err != nil {
 		panic(err)
 	}

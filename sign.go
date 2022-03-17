@@ -16,11 +16,12 @@ import (
 )
 
 var (
-	ErrMissingURLParameter = errors.New("some parameters are missing")
-	ErrIllegalURLParameter = errors.New("illegal parameter found")
-	ErrURLExpired          = errors.New("url was expired")
-	ErrBeforeStartDate     = errors.New("before the start date")
-	ErrPrivateKeyNotSet    = errors.New("private key not set")
+	ErrMissingURLParameter      = errors.New("some parameters are missing")
+	ErrIllegalURLParameter      = errors.New("illegal parameter found")
+	ErrURLExpired               = errors.New("url was expired")
+	ErrBeforeStartDate          = errors.New("before the start date")
+	ErrPrivateKeyNotSet         = errors.New("private key not set")
+	ErrParameterKeyAlreadyExist = errors.New("parameter key already exist")
 )
 
 var nowFunc = time.Now
@@ -83,16 +84,19 @@ func (s *SigUrl) Sign(baseUrl string, date time.Time, expires uint32) (string, e
 	if s.privateKey == nil {
 		return "", ErrPrivateKeyNotSet
 	}
-	netURL, err := url.Parse(baseUrl)
+	netUrl, err := url.Parse(baseUrl)
 	if err != nil {
 		return "", err
 	}
+	if !s.checkUrlCanSign(netUrl) {
+		return "", ErrParameterKeyAlreadyExist
+	}
 
-	query := netURL.Query()
+	query := netUrl.Query()
 	query.Set(s.paramKey(paramKeyAlgo), SignAlgoRSASHA256)
 	query.Set(s.paramKey(paramKeyDate), date.Format(ISO8601))
 	query.Set(s.paramKey(paramKeyExpires), fmt.Sprintf("%d", expires))
-	message := s.buildURL(netURL, query)
+	message := s.buildURL(netUrl, query)
 
 	signature, err := s.sign(message, s.privateKey)
 	if err != nil {
@@ -100,11 +104,15 @@ func (s *SigUrl) Sign(baseUrl string, date time.Time, expires uint32) (string, e
 	}
 
 	query.Set(s.paramKey(paramKeySignature), signature)
-	return s.buildURL(netURL, query), nil
+	return s.buildURL(netUrl, query), nil
 }
 
-func (s *SigUrl) checkURLCanSign(parsed url.URL) bool {
-	query := parsed.Query()
+func (s *SigUrl) checkUrlCanSign(netUrl *url.URL) bool {
+	if netUrl == nil {
+		return false
+	}
+
+	query := netUrl.Query()
 	for _, v := range []string{
 		paramKeyAlgo,
 		paramKeyDate,
