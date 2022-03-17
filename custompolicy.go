@@ -1,6 +1,10 @@
 package sigurl
 
-import "encoding/json"
+import (
+	"encoding/json"
+	"errors"
+	"net/netip"
+)
 
 type CustomPolicy struct {
 	statement struct {
@@ -21,11 +25,11 @@ func NewCustomPolicy() *CustomPolicy {
 	}{
 		ipAddress: policy{
 			xType: string(IpAddressAny),
-			value: nil,
+			value: []string{},
 		},
 		timeSlot: policy{
 			xType: string(TimeSlotAny),
-			value: nil,
+			value: []string{},
 		},
 	}}
 }
@@ -43,13 +47,40 @@ const (
 	TimeSlotCheck  timeSlotPolicy  = "Check"
 )
 
-func (cp *CustomPolicy) RegisterIpAddressPolicy(p ipAddressPolicy) error {
+func (cp *CustomPolicy) RegisterIpAddressPolicy(p ipAddressPolicy, value []string) error {
+	if p == IpAddressAny {
+		cp.statement.ipAddress.xType = string(p)
+		return nil
+	}
+
+	var addrs []string
+	for _, v := range value {
+		addr, err := netip.ParseAddr(v)
+		if err != nil {
+			return err
+		}
+		if addr.IsLoopback() {
+			return errors.New("loop back is not supported")
+		}
+		addrs = append(addrs, addr.String())
+	}
+	if len(addrs) == 0 {
+		return errors.New("value len must be greater than 0")
+	}
+
 	cp.statement.ipAddress.xType = string(p)
+	cp.statement.ipAddress.value = addrs
 	return nil
 }
 
-func (cp *CustomPolicy) RegisterTimeSlotPolicy(p timeSlotPolicy) error {
+func (cp *CustomPolicy) RegisterTimeSlotPolicy(p timeSlotPolicy, start, end string) error {
+	if p == TimeSlotAny {
+		cp.statement.timeSlot.xType = string(p)
+		return nil
+	}
+
 	cp.statement.timeSlot.xType = string(p)
+
 	return nil
 }
 
