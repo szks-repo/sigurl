@@ -45,10 +45,9 @@ const (
 type encoding string
 
 type SigUrl struct {
-	privateKey      []byte
-	publicKey       []byte
-	verifyFuncStack []func() bool
-	config          *Config
+	privateKey, publicKey []byte
+	verifyFuncStack       []func() bool
+	config                *Config
 }
 
 type Config struct {
