@@ -60,7 +60,7 @@ func (cp *CustomPolicy) RegisterIpAddressPolicy(p ipAddressPolicy, value []strin
 			return err
 		}
 		if addr.IsLoopback() {
-			return errors.New("loop back is not supported")
+			return errors.New("loop back address is not supported")
 		}
 		addrs = append(addrs, addr.String())
 	}
