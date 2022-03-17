@@ -257,7 +257,7 @@ func (s *SigUrl) SignedInfoFromUrl(parsedUrl *url.URL) (*SignedInfo, error) {
 	}
 
 	//Normalize URL
-	query2 := s.cloneQuery(query)
+	query2 := cloneQuery(query)
 	query2.Del(s.paramKey(paramKeySignature))
 	normalizedUrl := s.buildUrl(parsedUrl, query2)
 
@@ -267,16 +267,6 @@ func (s *SigUrl) SignedInfoFromUrl(parsedUrl *url.URL) (*SignedInfo, error) {
 		Signature: signature,
 		Message:   normalizedUrl,
 	}, nil
-}
-
-func (s *SigUrl) cloneQuery(q1 url.Values) url.Values {
-	q2 := url.Values{}
-	for k, v := range q1 {
-		if len(v) > 0 {
-			q2.Set(k, v[0])
-		}
-	}
-	return q2
 }
 
 func (s *SigUrl) paramKey(k string) string {
@@ -312,4 +302,14 @@ func (si *SignedInfo) SignatureBytes(e encoding) ([]byte, error) {
 		return base64.StdEncoding.DecodeString(si.Signature)
 	}
 	return nil, errors.New("unreachable error")
+}
+
+func cloneQuery(q1 url.Values) url.Values {
+	q2 := url.Values{}
+	for k, v := range q1 {
+		if len(v) > 0 {
+			q2.Set(k, v[0])
+		}
+	}
+	return q2
 }
