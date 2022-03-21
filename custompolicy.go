@@ -3,7 +3,14 @@ package sigurl
 import (
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/netip"
+	"time"
+)
+
+var (
+	ErrCustomPolicyIllegalIPAddr   = errors.New("custom policy error: illegal ip address")
+	ErrCustomPolicyIllegalTimeSlot = errors.New("custom policy error: illegal time slot")
 )
 
 type CustomPolicy struct {
@@ -16,6 +23,47 @@ type CustomPolicy struct {
 type policy struct {
 	xType string
 	value []string
+}
+
+type CustomPolicyFunc func(*CustomPolicy) error
+
+func IPAddr(addr string) CustomPolicyFunc {
+	return func(cp *CustomPolicy) error {
+		switch ipAddressPolicy(cp.statement.ipAddress.xType) {
+		case IpAddressAny:
+			return nil
+		case IpAddressAllow:
+			for _, v := range cp.statement.ipAddress.value {
+				if v == addr {
+					return nil
+				}
+			}
+			return fmt.Errorf("error ip address not allowed: %w", ErrCustomPolicyIllegalIPAddr)
+		case IpAddressDeny:
+			for _, v := range cp.statement.ipAddress.value {
+				if v == addr {
+					return fmt.Errorf("error ip denied ip addr: %w", ErrCustomPolicyIllegalIPAddr)
+				}
+			}
+			return nil
+		}
+
+		return fmt.Errorf("error unexpected case: %w", ErrCustomPolicyIllegalIPAddr)
+	}
+}
+
+func TimeSlot(now time.Time) CustomPolicyFunc {
+	return func(cp *CustomPolicy) error {
+		switch timeSlotPolicy(cp.statement.timeSlot.xType) {
+		case TimeSlotAny:
+			return nil
+		case TimeSlotCheck:
+			//Todo:
+			return nil
+		}
+
+		return fmt.Errorf("out of time slot: %w", ErrCustomPolicyIllegalTimeSlot)
+	}
 }
 
 func NewCustomPolicy() *CustomPolicy {
@@ -78,7 +126,7 @@ func (cp *CustomPolicy) RegisterTimeSlotPolicy(p timeSlotPolicy, start, end stri
 		cp.statement.timeSlot.xType = string(p)
 		return nil
 	}
-
+	//Todo:
 	cp.statement.timeSlot.xType = string(p)
 
 	return nil

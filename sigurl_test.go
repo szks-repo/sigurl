@@ -22,8 +22,6 @@ func TestSuccess(t *testing.T) {
 				Encoding:     EncodingBase64,
 				CustomPolicy: NewCustomPolicy(),
 			})
-			sigUrlInstance.RegisterAdditionalVerifyFunc(nil)
-
 			signedUrl, err := sigUrlInstance.Sign(v, time.Now(), 7200)
 			if err != nil {
 				t.Error(err)
@@ -48,7 +46,7 @@ func TestFail(t *testing.T) {
 			t.Error(err)
 		}
 
-		if err := sigUrlInstance.Verify(signedUrl); !errors.Is(err, ErrBeforeStartDate) {
+		if err := sigUrlInstance.Verify(signedUrl, IPAddr("127.0.0.1")); !errors.Is(err, ErrBeforeStartDate) {
 			t.Error("unexpected result")
 		}
 	})

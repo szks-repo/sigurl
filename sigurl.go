@@ -90,11 +90,6 @@ func New(privateKey, publicKey []byte, cfg *Config) *SigUrl {
 	}
 }
 
-//RegisterAdditionalVerifyFunc unimplemented
-func (s *SigUrl) RegisterAdditionalVerifyFunc(fn func() bool) {
-	s.verifyFuncStack = append(s.verifyFuncStack, fn)
-}
-
 type SignedInfo struct {
 	//署名付きURLが使用可能になる日付と時刻
 	Date time.Time
@@ -179,8 +174,9 @@ func (s *SigUrl) sign(message string, privateKeyBytes []byte) (ret string, err e
 	return
 }
 
-func (s *SigUrl) Verify(rawUrl string) error {
+func (s *SigUrl) Verify(rawUrl string, policies ...CustomPolicyFunc) error {
 	parsed, err := url.Parse(rawUrl)
+
 	if err != nil {
 		return err
 	}
@@ -199,6 +195,22 @@ func (s *SigUrl) Verify(rawUrl string) error {
 	if expiresAt.Before(nowFunc()) {
 		//有効期限切
 		return ErrURLExpired
+	}
+
+	for _, p := range policies {
+		if p == nil {
+			//Todo: Handle nil func
+		}
+
+		//Todo: config.CustomPolicyとの一致検証
+		if err := p(s.config.CustomPolicy); err != nil {
+			switch errors.Unwrap(err) {
+			case ErrCustomPolicyIllegalIPAddr:
+				return err
+			case ErrCustomPolicyIllegalTimeSlot:
+				return err
+			}
+		}
 	}
 
 	var pubKey *rsa.PublicKey
