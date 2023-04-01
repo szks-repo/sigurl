@@ -176,7 +176,6 @@ func (s *SigUrl) sign(message string, privateKeyBytes []byte) (ret string, err e
 
 func (s *SigUrl) Verify(rawUrl string, policies ...CustomPolicyFunc) error {
 	parsed, err := url.Parse(rawUrl)
-
 	if err != nil {
 		return err
 	}
